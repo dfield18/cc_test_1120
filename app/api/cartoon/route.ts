@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     // Configuration - can be moved to environment variables
     const CARTOON_SOURCE = process.env.CARTOON_SOURCE || 'github';
-    const GITHUB_REPO = process.env.CARTOON_GITHUB_REPO || 'davidfield/cartoons';
+    const GITHUB_REPO = process.env.CARTOON_GITHUB_REPO || 'dfield18/cartoons';
     const CARTOON_URL = process.env.CARTOON_URL || '';
     
     let imageUrl: string;
@@ -78,9 +78,11 @@ export async function GET(request: NextRequest) {
           if (imageFiles.length > 0) {
             // Pick a random image
             const randomFile = imageFiles[Math.floor(Math.random() * imageFiles.length)];
-            // Use download_url for raw file access
-            imageUrl = randomFile.download_url || `https://raw.githubusercontent.com/${owner}/${repo}/main/${randomFile.path}`;
+            // Use download_url for raw file access (GitHub provides this in the API response)
+            imageUrl = randomFile.download_url || `https://raw.githubusercontent.com/${owner}/${repo}/main/${encodeURIComponent(randomFile.path)}`;
+            console.log(`Selected cartoon: ${randomFile.name} from ${GITHUB_REPO}`);
           } else {
+            console.warn(`No image files found in ${GITHUB_REPO}`);
             // Fallback: use a placeholder or default cartoon
             imageUrl = getDefaultCartoon();
           }
