@@ -13,10 +13,10 @@ interface Message {
 }
 
 const SUGGESTED_QUESTIONS = [
-  'Best Card for Travel',
-  "I'm 40 and love to travel and make $100k a year",
-  'Best card for groceries and gas',
-  'Best no-annual-fee starter card',
+  { text: 'Best Card for Travel', icon: '✈️' },
+  { text: 'Groceries & Gas Rewards', icon: '🛒' },
+  { text: 'No Annual Fee Cards', icon: '💳' },
+  { text: 'Premium Travel Cards', icon: '✨' },
 ];
 
 export default function Home() {
@@ -233,31 +233,30 @@ export default function Home() {
         setMessages(updatedUserMessages);
       }
 
-      // Generate dynamic suggestions after first question is answered
-      if (messages.length === 0) {
-        // This is the first question, generate suggestions
-        try {
-          const suggestionsResponse = await fetch('/api/suggestions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              userQuestion: userMessage,
-              conversationHistory: conversationHistory,
-            }),
-          });
+      // Generate dynamic suggestions after every question is answered
+      try {
+        const suggestionsResponse = await fetch('/api/suggestions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userQuestion: userMessage,
+            conversationHistory: conversationHistory,
+            recommendations: data.recommendations || [],
+            summary: data.summary || '',
+          }),
+        });
 
-          if (suggestionsResponse.ok) {
-            const suggestionsData = await suggestionsResponse.json();
-            if (suggestionsData.suggestions && Array.isArray(suggestionsData.suggestions)) {
-              setDynamicSuggestions(suggestionsData.suggestions);
-            }
+        if (suggestionsResponse.ok) {
+          const suggestionsData = await suggestionsResponse.json();
+          if (suggestionsData.suggestions && Array.isArray(suggestionsData.suggestions)) {
+            setDynamicSuggestions(suggestionsData.suggestions);
           }
-        } catch (error) {
-          console.error('Error generating suggestions:', error);
-          // Don't show error to user, just continue without suggestions
         }
+      } catch (error) {
+        console.error('Error generating suggestions:', error);
+        // Don't show error to user, just continue without suggestions
       }
     } catch (error) {
       console.error('Error:', error);
@@ -362,32 +361,30 @@ export default function Home() {
         setMessages(updatedUserMessages);
       }
 
-      // Generate dynamic suggestions after first question is answered
-      // Check if this is the first question (messages array was empty before this question)
-      if (messages.length === 0) {
-        // This is the first question, generate suggestions
-        try {
-          const suggestionsResponse = await fetch('/api/suggestions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              userQuestion: question,
-              conversationHistory: conversationHistory,
-            }),
-          });
+      // Generate dynamic suggestions after every question is answered
+      try {
+        const suggestionsResponse = await fetch('/api/suggestions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userQuestion: question,
+            conversationHistory: conversationHistory,
+            recommendations: data.recommendations || [],
+            summary: data.summary || '',
+          }),
+        });
 
-          if (suggestionsResponse.ok) {
-            const suggestionsData = await suggestionsResponse.json();
-            if (suggestionsData.suggestions && Array.isArray(suggestionsData.suggestions)) {
-              setDynamicSuggestions(suggestionsData.suggestions);
-            }
+        if (suggestionsResponse.ok) {
+          const suggestionsData = await suggestionsResponse.json();
+          if (suggestionsData.suggestions && Array.isArray(suggestionsData.suggestions)) {
+            setDynamicSuggestions(suggestionsData.suggestions);
           }
-        } catch (error) {
-          console.error('Error generating suggestions:', error);
-          // Don't show error to user, just continue without suggestions
         }
+      } catch (error) {
+        console.error('Error generating suggestions:', error);
+        // Don't show error to user, just continue without suggestions
       }
     } catch (error) {
       console.error('Error:', error);
@@ -413,6 +410,30 @@ export default function Home() {
     }
   };
 
+  // Helper function to get icon for a suggestion based on keywords
+  const getSuggestionIcon = (text: string): string => {
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('travel') || lowerText.includes('flight') || lowerText.includes('airline')) {
+      return '✈️';
+    } else if (lowerText.includes('grocery') || lowerText.includes('gas') || lowerText.includes('shopping') || lowerText.includes('store')) {
+      return '🛒';
+    } else if (lowerText.includes('fee') || lowerText.includes('annual') || lowerText.includes('no fee')) {
+      return '💳';
+    } else if (lowerText.includes('premium') || lowerText.includes('luxury') || lowerText.includes('elite')) {
+      return '✨';
+    } else if (lowerText.includes('cash back') || lowerText.includes('cashback')) {
+      return '💰';
+    } else if (lowerText.includes('reward') || lowerText.includes('point')) {
+      return '🎁';
+    } else if (lowerText.includes('student') || lowerText.includes('college')) {
+      return '🎓';
+    } else if (lowerText.includes('business')) {
+      return '💼';
+    } else {
+      return '💳'; // Default icon
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
       <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -430,22 +451,35 @@ export default function Home() {
         <div className="grid grid-cols-2 gap-4 mb-6">
           {/* User Messages Box */}
           <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b">Your Questions</h3>
+            <div className="mb-4 pb-2 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">Your Questions</h3>
+              <p className="text-sm text-gray-600 mt-1">Ask me anything about credit cards</p>
+            </div>
             <div 
               ref={chatContainerRef}
-              className="h-96 overflow-y-auto mb-4 space-y-3"
+              className="h-[422px] overflow-y-auto mb-4 space-y-3"
             >
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-8">
-                  <p className="text-gray-500 mb-6 text-center">Start a conversation!</p>
-                  <div className="flex flex-wrap gap-3 justify-center px-4">
+                  {/* Teal-blue circular icon with starburst */}
+                  <div className="w-16 h-16 bg-teal-500 rounded-full flex items-center justify-center mb-4">
+                    <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                    </svg>
+                  </div>
+                  <p className="font-bold text-gray-800 mb-2 text-center">Start a conversation!</p>
+                  <p className="text-sm text-gray-600 mb-6 text-center px-4">
+                    Choose a quick action below or type your own question about credit cards.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 w-full px-4">
                     {SUGGESTED_QUESTIONS.map((question, index) => (
                       <button
                         key={index}
-                        onClick={() => handleSuggestedQuestion(question)}
-                        className="px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200"
+                        onClick={() => handleSuggestedQuestion(question.text)}
+                        className="px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 flex items-center gap-2"
                       >
-                        {question}
+                        <span className="text-lg">{question.icon}</span>
+                        <span className="text-left">{question.text}</span>
                       </button>
                     ))}
                   </div>
@@ -555,15 +589,16 @@ export default function Home() {
                   {dynamicSuggestions.length > 0 && messages.length > 0 && !isLoading && (
                     <div className="mt-4 pt-4 border-t border-gray-200">
                       <p className="text-xs text-gray-500 mb-3 font-medium">You might also ask:</p>
-                      <div className="flex flex-col gap-2">
-                        {dynamicSuggestions.map((suggestion, index) => (
+                      <div className="grid grid-cols-2 gap-3">
+                        {dynamicSuggestions.slice(0, 4).map((suggestion, index) => (
                           <button
                             key={index}
                             onClick={() => handleSuggestedQuestion(suggestion)}
                             disabled={isLoading}
-                            className="px-4 py-2 bg-white border border-gray-200 rounded-full text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed w-full text-center"
+                            className="px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                           >
-                            {suggestion}
+                            <span className="text-lg">{getSuggestionIcon(suggestion)}</span>
+                            <span className="text-left flex-1">{suggestion}</span>
                           </button>
                         ))}
                       </div>
@@ -588,9 +623,11 @@ export default function Home() {
               <button
                 onClick={handleSend}
                 disabled={isLoading || !input.trim()}
-                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm"
+                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all text-sm flex items-center justify-center min-w-[48px]"
               >
-                Send
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
               </button>
             </div>
           </div>
@@ -606,7 +643,7 @@ export default function Home() {
             <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b">{recommendationTitle}</h3>
             <div 
               ref={assistantContainerRef}
-              className="h-96 overflow-y-auto mb-4 space-y-3"
+              className="h-[422px] overflow-y-auto mb-4 space-y-3"
             >
               {(() => {
                 // Find only the most recent assistant message with recommendations
