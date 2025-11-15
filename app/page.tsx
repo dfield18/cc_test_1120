@@ -543,9 +543,9 @@ export default function Home() {
         </header>
 
         {/* Two Column Layout */}
-        <div className="grid grid-cols-5 gap-6 mb-6" style={{ height: '700px', maxHeight: '700px', overflow: 'hidden' }}>
+        <div className={`grid gap-6 mb-6 ${messages.some(msg => msg.role === 'user') ? 'grid-cols-5' : 'grid-cols-1 max-w-2xl mx-auto'}`} style={{ height: '700px', maxHeight: '700px', overflow: 'hidden' }}>
           {/* Left Column - Chatbot */}
-          <div className="col-span-2 flex flex-col" style={{ height: '700px', maxHeight: '700px', overflow: 'hidden' }}>
+          <div className={`${messages.some(msg => msg.role === 'user') ? 'col-span-2' : 'col-span-1'} flex flex-col`} style={{ height: '700px', maxHeight: '700px', overflow: 'hidden' }}>
             <div className="bg-white rounded-2xl shadow-2xl shadow-slate-300/40 border border-slate-200/60 p-8 h-full flex flex-col backdrop-blur-sm bg-gradient-to-br from-white to-slate-50/50" style={{ maxHeight: '100%', overflow: 'hidden' }}>
               <div className="mb-6 pb-4 border-b border-slate-200 flex-shrink-0">
                 <h3 className="text-xl font-semibold text-slate-900 mb-1">Your Questions</h3>
@@ -730,7 +730,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Column - Credit Card Recommendations */}
+          {/* Right Column - Credit Card Recommendations - Only show after a question is asked */}
+          {messages.some(msg => msg.role === 'user') && (
           <div className="col-span-3 flex flex-col" style={{ height: '700px', maxHeight: '700px', overflow: 'hidden' }}>
             <div className="bg-white rounded-2xl shadow-2xl shadow-slate-300/40 border border-slate-200/60 p-8 h-full flex flex-col backdrop-blur-sm bg-gradient-to-br from-white to-slate-50/50" style={{ maxHeight: '100%', overflow: 'hidden' }}>
               <div className="flex items-center gap-3 mb-8 flex-shrink-0">
@@ -740,7 +741,7 @@ export default function Home() {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900">Top Bank Cards</h2>
+                  <h2 className="text-2xl font-bold text-slate-900">{recommendationTitle || 'Top Bank Cards'}</h2>
                   <p className="text-sm text-slate-500 font-light">Personalized recommendations for you</p>
                 </div>
               </div>
@@ -913,6 +914,7 @@ export default function Home() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
       </div>
