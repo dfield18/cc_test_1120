@@ -76,6 +76,16 @@ export default function Home() {
   // Randomly select 4 questions for desktop display (client-side only to avoid hydration issues)
   const [desktopQuestions, setDesktopQuestions] = useState<SuggestedQuestion[]>([]);
   
+  // Get the most recent recommendations for mobile bottom bar
+  const topThreeRecommendations = useMemo(() => {
+    const mostRecentAssistantMessage = [...messages]
+      .reverse()
+      .find((msg) => msg.role === 'assistant' && msg.recommendations && msg.recommendations.length > 0);
+    
+    const recommendations = mostRecentAssistantMessage?.recommendations || [];
+    return recommendations.slice(0, 3);
+  }, [messages]);
+  
   useEffect(() => {
     // Only run on client side to avoid hydration mismatch
     const shuffled = [...SUGGESTED_QUESTIONS].sort(() => Math.random() - 0.5);
@@ -795,7 +805,7 @@ export default function Home() {
         <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full blur-3xl"></div>
       </div>
       
-      <div className={`container mx-auto px-4 lg:px-6 max-w-7xl relative z-10 ${messages.length > 0 ? 'py-4 md:py-6' : 'py-6 md:py-8'}`}>
+      <div className={`container mx-auto px-4 lg:px-6 max-w-7xl relative z-10 ${messages.length > 0 ? 'py-4 md:py-6' : 'py-6 md:py-8'} ${topThreeRecommendations.length > 0 ? 'pb-24 lg:pb-0' : ''}`}>
         {/* Hero Section */}
         <section className={`relative overflow-hidden ${messages.length > 0 ? 'py-4 md:py-6 mb-2' : 'py-2 md:py-4 mb-4'}`}>
           {/* Hero content */}
@@ -977,7 +987,7 @@ export default function Home() {
             <div className={`bg-white rounded-2xl shadow-2xl shadow-slate-300/40 border border-slate-200/60 h-full flex flex-col backdrop-blur-sm bg-gradient-to-br from-white to-slate-50/50 ${messages.some(msg => msg.role === 'user') ? 'p-4 lg:p-8' : 'p-4 md:p-6'}`} style={{ maxHeight: '100%', overflow: 'hidden' }}>
               <div className={`${messages.some(msg => msg.role === 'user') ? 'mb-6 pb-4' : 'mb-4 pb-3'} border-b border-slate-200 flex-shrink-0`}>
                 <h3 className={`${messages.some(msg => msg.role === 'user') ? 'text-xl' : 'text-lg'} font-semibold text-slate-900 mb-1`}>Your Questions</h3>
-                <p className="text-sm text-slate-500 font-light">Ask me anything about credit cards</p>
+                <p className="text-base text-muted-foreground">Ask me anything about credit cards</p>
               </div>
               <div 
                 ref={(el) => {
@@ -1166,25 +1176,94 @@ export default function Home() {
                         </div>
                       );
                     })}
-                  {isLoading && (
-                    <div className="flex items-start gap-3 lg:gap-3 mb-6 max-w-2xl mx-auto">
-                      <div className="flex-shrink-0 w-10 h-10 lg:w-8 lg:h-8 rounded-full bg-gray-100 flex items-center justify-center shadow-sm">
-                        <svg className="w-5 h-5 lg:w-4 lg:h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
-                      </div>
-                      <div className="bg-gray-50 rounded-xl p-5 px-6 lg:p-4 lg:px-5 shadow-sm">
-                        <div className="flex items-center gap-1.5 lg:gap-1">
-                          <span className="text-slate-600 text-base lg:text-[15px] font-medium">Thinking</span>
-                          <div className="flex gap-1.5 lg:gap-1 ml-2">
-                            <div className="w-2 h-2 lg:w-1.5 lg:h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                            <div className="w-2 h-2 lg:w-1.5 lg:h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                            <div className="w-2 h-2 lg:w-1.5 lg:h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  {isLoading && (() => {
+                    // Check if the current question is about previous cards or a non-recommendation question
+                    const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user');
+                    const currentQuery = lastUserMessage?.content?.toLowerCase() || '';
+                    
+                    // Patterns that indicate asking about previous cards or non-recommendation questions
+                    const previousCardPatterns = [
+                      /these cards/i,
+                      /any of these/i,
+                      /these recommendations/i,
+                      /the cards above/i,
+                      /the cards you showed/i,
+                      /the cards you recommended/i,
+                      /which of these/i,
+                      /do these cards/i,
+                      /do any of these/i,
+                      /are these cards/i,
+                      /the recommended cards/i,
+                      /the cards you mentioned/i,
+                    ];
+                    
+                    // Patterns for information questions
+                    const informationQuestionPatterns = [
+                      /^what is\s+(an|a|the)?\s+/i,
+                      /^what's\s+(an|a|the)?\s+/i,
+                      /^what are\s+/i,
+                      /^how do\s+/i,
+                      /^how does\s+/i,
+                      /^how can\s+/i,
+                      /^explain\s+/i,
+                      /^can you explain\s+/i,
+                      /^tell me about\s+/i,
+                      /^what does\s+/i,
+                      /^what's the difference between/i,
+                      /^difference between/i,
+                      /what is the\s+.*\s+of\s+/i,
+                      /what's the\s+.*\s+of\s+/i,
+                      /what is\s+.*\s+for\s+/i,
+                    ];
+                    
+                    const isAboutPreviousCards = previousCardPatterns.some(pattern => pattern.test(currentQuery));
+                    const isInformationQuestion = informationQuestionPatterns.some(pattern => pattern.test(currentQuery));
+                    const useFunMessages = isAboutPreviousCards || isInformationQuestion;
+                    
+                    return (
+                      <>
+                        {/* Mobile: Show SwipeToLoad and cartoon */}
+                        <div className="lg:hidden mb-6 max-w-2xl mx-auto">
+                          <div className="flex flex-col items-center pt-0 pb-4">
+                            <SwipeToLoad messages={useFunMessages ? FUN_LOADING_MESSAGES : undefined} />
+                            {currentCartoon && (
+                              <div className="mt-3 flex flex-col items-center">
+                                <div className="w-full max-w-lg rounded-xl overflow-hidden shadow-lg border border-slate-200 bg-slate-50 flex items-center justify-center">
+                                  <img
+                                    src={currentCartoon.imageUrl}
+                                    alt="Loading cartoon"
+                                    className="max-w-full max-h-64 object-contain"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.style.display = 'none';
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  )}
+                        {/* Desktop: Show simple thinking indicator */}
+                        <div className="hidden lg:flex items-start gap-3 mb-6 max-w-2xl mx-auto">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shadow-sm">
+                            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-4 px-5 shadow-sm">
+                            <div className="flex items-center gap-1">
+                              <span className="text-slate-600 text-[15px] font-medium">Thinking</span>
+                              <div className="flex gap-1 ml-2">
+                                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                   
                   {/* Dynamic Suggested Questions - After most recent answer */}
                   {dynamicSuggestions.length > 0 && messages.length > 0 && !isLoading && (
@@ -1468,6 +1547,27 @@ export default function Home() {
           </div>
           )}
         </div>
+        )}
+
+        {/* Mobile-only persistent bottom bar with recommended credit cards */}
+        {topThreeRecommendations.length > 0 && (
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-50 safe-area-inset-bottom">
+            <div className="px-4 py-3">
+              <div className="flex gap-2">
+                {topThreeRecommendations.map((rec, index) => (
+                  <a
+                    key={index}
+                    href={rec.apply_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg px-3 py-2.5 text-sm font-semibold text-center hover:from-teal-700 hover:to-cyan-700 transition-all duration-200 shadow-md shadow-teal-500/30 active:scale-95"
+                  >
+                    {rec.credit_card_name}
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
       </div>
