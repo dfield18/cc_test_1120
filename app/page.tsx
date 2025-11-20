@@ -5,7 +5,7 @@ import { Recommendation } from '@/types';
 import SwipeToLoad from '@/components/SwipeToLoad';
 import CartoonDisplay from '@/components/CartoonDisplay';
 import ReactMarkdown from 'react-markdown';
-import { Plane, ShoppingCart, Shield, User, Sparkles, CreditCard, Search } from 'lucide-react';
+import { Plane, ShoppingCart, Shield, User, Sparkles, CreditCard, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -36,6 +36,15 @@ const SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
   { text: 'What are the best business credit cards?', description: 'Top rewards for small business spending', icon: 'premium' },
   { text: 'Show top cards for streaming and subscriptions', description: 'Earn more on Netflix, Spotify, etc.', icon: 'shopping' },
   { text: 'Which cards offer the best welcome bonuses?', description: 'High-value intro rewards', icon: 'travel' },
+  { text: 'What cards give the best rewards for dining?', description: 'Maximize points at restaurants', icon: 'shopping' },
+  { text: 'Show me cards with 0% APR offers', description: 'Interest-free balance transfers', icon: 'creditcard' },
+  { text: 'What are the best cards for groceries?', description: 'Earn rewards on supermarket spending', icon: 'shopping' },
+  { text: 'Which cards have the best airport lounge access?', description: 'Premium travel experiences', icon: 'travel' },
+  { text: 'What cards offer the most points for gas?', description: 'Maximize fuel rewards', icon: 'shopping' },
+  { text: 'Show cards with no foreign transaction fees', description: 'Perfect for international travel', icon: 'travel' },
+  { text: 'What are the best student credit cards?', description: 'Cards designed for students', icon: 'creditcard' },
+  { text: 'Which cards offer the best hotel rewards?', description: 'Free nights and elite status', icon: 'travel' },
+  { text: 'What cards have the best cash back rates?', description: 'Highest percentage returns', icon: 'shopping' },
 ];
 
 const FUN_LOADING_MESSAGES = [
@@ -56,13 +65,28 @@ export default function Home() {
   const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>([]);
   const [currentCartoon, setCurrentCartoon] = useState<{ imageUrl: string; source?: string } | null>(null);
   const [shownCartoons, setShownCartoons] = useState<string[]>([]);
-  const [carouselIndex, setCarouselIndex] = useState(0);
+  // Initialize carousel index to center position
+  const centerIndex = Math.floor(SUGGESTED_QUESTIONS.length / 2);
+  const [carouselIndex, setCarouselIndex] = useState(centerIndex);
+  const [suggestionsCarouselIndex, setSuggestionsCarouselIndex] = useState(0);
+  const [popularQuestionsCarouselIndex, setPopularQuestionsCarouselIndex] = useState(centerIndex);
+  const [isCarouselHovered, setIsCarouselHovered] = useState(false);
   const shownCartoonsRef = useRef<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
+  const suggestionsCarouselRef = useRef<HTMLDivElement>(null);
+  const popularQuestionsCarouselRef = useRef<HTMLDivElement>(null);
   const hasInitialCartoonRef = useRef(false);
+  // Refs for dragging indicator buttons
+  const isDraggingIndicatorRef = useRef(false);
+  const hasDraggedIndicatorRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartScrollLeftRef = useRef(0);
   const prevIsLoadingRef = useRef(false);
+  // Refs for click-vs-drag detection on carousel buttons
+  const carouselButtonMouseDownRef = useRef<{ x: number; y: number; time: number; target: HTMLElement | null } | null>(null);
+  const carouselButtonHasDraggedRef = useRef(false);
   
   // Track when recommendations change to trigger animation
   const prevRecommendationsRef = useRef<Recommendation[]>([]);
@@ -73,9 +97,6 @@ export default function Home() {
   // Track previous user message count to detect new questions
   const prevUserMessageCountRef = useRef(0);
   
-  // Randomly select 4 questions for desktop display (client-side only to avoid hydration issues)
-  const [desktopQuestions, setDesktopQuestions] = useState<SuggestedQuestion[]>([]);
-  
   // Get the most recent recommendations for mobile bottom bar
   const topThreeRecommendations = useMemo(() => {
     const mostRecentAssistantMessage = [...messages]
@@ -85,12 +106,6 @@ export default function Home() {
     const recommendations = mostRecentAssistantMessage?.recommendations || [];
     return recommendations.slice(0, 3);
   }, [messages]);
-  
-  useEffect(() => {
-    // Only run on client side to avoid hydration mismatch
-    const shuffled = [...SUGGESTED_QUESTIONS].sort(() => Math.random() - 0.5);
-    setDesktopQuestions(shuffled.slice(0, 4));
-  }, []);
   
   // Keep ref in sync with state
   useEffect(() => {
@@ -181,6 +196,559 @@ export default function Home() {
 
     carousel.addEventListener('scroll', handleScroll);
     return () => carousel.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Handle dynamic suggestions carousel scroll
+  useEffect(() => {
+    const carousel = suggestionsCarouselRef.current;
+    if (!carousel) return;
+
+    const handleScroll = () => {
+      const scrollLeft = carousel.scrollLeft;
+      // Mobile card width is 200px, desktop is 280px
+      const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
+      const cardWidth = isMobile ? 200 : 280;
+      const gap = 12; // gap-3 = 12px
+      const newIndex = Math.round(scrollLeft / (cardWidth + gap));
+      setSuggestionsCarouselIndex(Math.min(newIndex, dynamicSuggestions.length - 1));
+    };
+
+    carousel.addEventListener('scroll', handleScroll);
+    window.addEventListener('resize', handleScroll);
+    return () => {
+      carousel.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [dynamicSuggestions.length]);
+
+  // Handle popular questions carousel scroll (desktop)
+  useEffect(() => {
+    const carousel = popularQuestionsCarouselRef.current;
+    if (!carousel) return;
+
+    const handleScroll = () => {
+      const scrollLeft = carousel.scrollLeft;
+      const cardWidth = 280; // Fixed card width
+      const gap = 12; // gap-3 = 12px
+      const newIndex = Math.round(scrollLeft / (cardWidth + gap));
+      setPopularQuestionsCarouselIndex(Math.min(newIndex, SUGGESTED_QUESTIONS.length - 1));
+    };
+
+    carousel.addEventListener('scroll', handleScroll);
+    return () => carousel.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Enable horizontal mouse wheel scrolling, drag-to-scroll, and hide scrollbar for suggestions carousel
+  useEffect(() => {
+    const carousel = suggestionsCarouselRef.current;
+    if (!carousel) return;
+
+    // Set a unique ID for the carousel if it doesn't have one
+    if (!carousel.id) {
+      carousel.id = 'suggestions-carousel';
+    }
+
+    const updateScrollbar = () => {
+      // Check if style element already exists
+      let styleElement = document.getElementById('suggestions-carousel-scrollbar-style');
+      
+      // Hide scrollbar on both mobile and desktop
+      carousel.style.scrollbarWidth = 'none';
+      carousel.style.setProperty('-ms-overflow-style', 'none', 'important');
+      
+      // For webkit browsers, hide scrollbar
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = 'suggestions-carousel-scrollbar-style';
+        styleElement.textContent = `
+          #suggestions-carousel::-webkit-scrollbar {
+            display: none !important;
+          }
+        `;
+        document.head.appendChild(styleElement);
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      // Only handle on desktop
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+      if (!isDesktop) return;
+
+      // If there's horizontal delta (trackpad horizontal scroll), allow native scrolling
+      if (Math.abs(e.deltaX) > 0) {
+        // Native horizontal scrolling - don't prevent default
+        return;
+      }
+      
+      // If vertical scroll, convert to horizontal
+      if (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaX) === 0) {
+        e.preventDefault();
+        carousel.scrollLeft += e.deltaY;
+      }
+    };
+
+    // Drag-to-scroll functionality for desktop
+    let isDown = false;
+    let startX = 0;
+    let scrollLeft = 0;
+    let hasMoved = false;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+      if (!isDesktop) return;
+      
+      // Don't start drag if clicking on carousel indicators or buttons
+      const target = e.target as HTMLElement;
+      if (target.closest('[aria-label*="slide"]') || target.closest('button')) {
+        return;
+      }
+
+      isDown = true;
+      hasMoved = false;
+      carousel.style.cursor = 'grabbing';
+      carousel.style.userSelect = 'none';
+      startX = e.pageX - carousel.offsetLeft;
+      scrollLeft = carousel.scrollLeft;
+    };
+
+    const handleMouseLeave = () => {
+      isDown = false;
+      hasMoved = false;
+      carousel.style.cursor = 'grab';
+      carousel.style.userSelect = '';
+    };
+
+    const handleMouseUp = () => {
+      isDown = false;
+      hasMoved = false;
+      carousel.style.cursor = 'grab';
+      carousel.style.userSelect = '';
+    };
+
+    const handleDocumentMouseUp = () => {
+      if (isDown) {
+        isDown = false;
+        hasMoved = false;
+        carousel.style.cursor = 'grab';
+        carousel.style.userSelect = '';
+      }
+    };
+
+    const handleDocumentMouseMove = (e: MouseEvent) => {
+      if (!isDown) return;
+      
+      const x = e.pageX - carousel.offsetLeft;
+      const walk = (x - startX) * 1.5; // Scroll speed multiplier
+      
+      // Only prevent default and scroll if moved more than 5px (to distinguish from clicks)
+      if (Math.abs(walk) > 5) {
+        hasMoved = true;
+        e.preventDefault();
+        carousel.scrollLeft = scrollLeft - walk;
+      }
+    };
+
+    updateScrollbar();
+    carousel.style.cursor = 'grab';
+    carousel.addEventListener('wheel', handleWheel, { passive: false });
+    carousel.addEventListener('mousedown', handleMouseDown);
+    carousel.addEventListener('mouseleave', handleMouseLeave);
+    carousel.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+    document.addEventListener('mousemove', handleDocumentMouseMove);
+    window.addEventListener('resize', updateScrollbar);
+
+    return () => {
+      carousel.removeEventListener('wheel', handleWheel);
+      carousel.removeEventListener('mousedown', handleMouseDown);
+      carousel.removeEventListener('mouseleave', handleMouseLeave);
+      carousel.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      window.removeEventListener('resize', updateScrollbar);
+      const styleElement = document.getElementById('suggestions-carousel-scrollbar-style');
+      if (styleElement) {
+        styleElement.remove();
+      }
+    };
+  }, [dynamicSuggestions.length]);
+
+  // Handle dragging indicator buttons for desktop carousel
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+      if (!isDesktop) return;
+
+      const target = e.target as HTMLElement;
+      // Check if clicking on an indicator button
+      const indicatorButton = target.closest('[data-indicator-button]');
+      
+      if (indicatorButton && popularQuestionsCarouselRef.current) {
+        isDraggingIndicatorRef.current = true;
+        hasDraggedIndicatorRef.current = false;
+        dragStartXRef.current = e.pageX;
+        dragStartScrollLeftRef.current = popularQuestionsCarouselRef.current.scrollLeft;
+        e.preventDefault(); // Prevent text selection
+        e.stopPropagation(); // Prevent carousel drag from interfering
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+      if (!isDesktop || !isDraggingIndicatorRef.current) return;
+      
+      const carousel = popularQuestionsCarouselRef.current;
+      if (!carousel) {
+        isDraggingIndicatorRef.current = false;
+        return;
+      }
+      
+      e.preventDefault(); // Prevent default behavior while dragging
+      const deltaX = e.pageX - dragStartXRef.current;
+      
+      // Only start dragging if moved more than 3px (to distinguish from clicks)
+      if (Math.abs(deltaX) > 3) {
+        hasDraggedIndicatorRef.current = true;
+        // Scale factor: 1px of mouse movement = 2px of scroll
+        const scrollDistance = deltaX * 2;
+        
+        const newScrollLeft = dragStartScrollLeftRef.current - scrollDistance;
+        const maxScroll = carousel.scrollWidth - carousel.clientWidth;
+        carousel.scrollLeft = Math.max(0, Math.min(newScrollLeft, maxScroll));
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (isDraggingIndicatorRef.current) {
+        // Reset after a short delay to allow click handler to check
+        setTimeout(() => {
+          hasDraggedIndicatorRef.current = false;
+        }, 100);
+        isDraggingIndicatorRef.current = false;
+      }
+    };
+
+    document.addEventListener('mousedown', handleMouseDown, { passive: false, capture: true });
+    document.addEventListener('mousemove', handleMouseMove, { passive: false });
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  // Enable horizontal mouse wheel scrolling, drag-to-scroll, and hide scrollbar for popular questions carousel (desktop)
+  useEffect(() => {
+    const carousel = popularQuestionsCarouselRef.current;
+    if (!carousel) return;
+
+    // Set a unique ID for the carousel if it doesn't have one
+    if (!carousel.id) {
+      carousel.id = 'popular-questions-carousel';
+    }
+
+    const updateScrollbar = () => {
+      // Check if style element already exists
+      let styleElement = document.getElementById('popular-questions-carousel-scrollbar-style');
+      
+      // Hide scrollbar on both mobile and desktop
+      carousel.style.scrollbarWidth = 'none';
+      carousel.style.setProperty('-ms-overflow-style', 'none', 'important');
+      
+      // For webkit browsers, hide scrollbar
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = 'popular-questions-carousel-scrollbar-style';
+        styleElement.textContent = `
+          #popular-questions-carousel::-webkit-scrollbar {
+            display: none !important;
+          }
+        `;
+        document.head.appendChild(styleElement);
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      // Only handle on desktop
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+      if (!isDesktop) return;
+
+      // If there's horizontal delta (trackpad horizontal scroll), allow native scrolling
+      if (Math.abs(e.deltaX) > 0) {
+        // Native horizontal scrolling - don't prevent default
+        return;
+      }
+      
+      // If vertical scroll, convert to horizontal
+      if (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaX) === 0) {
+        e.preventDefault();
+        carousel.scrollLeft += e.deltaY;
+      }
+    };
+
+    // Drag-to-scroll functionality for desktop
+    let isDown = false;
+    let startX = 0;
+    let scrollLeft = 0;
+    let hasDragged = false;
+
+    const handleDragStart = (e: DragEvent) => {
+      // Prevent default drag behavior for images and links
+      if (isDown) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+      if (!isDesktop) return;
+      
+      // Don't start drag if clicking on carousel indicators or arrow buttons
+      const target = e.target as HTMLElement;
+      if (target.closest('[aria-label*="slide"]') || 
+          target.closest('[data-indicator-button]') ||
+          target.hasAttribute('data-indicator-button') ||
+          target.closest('button[aria-label="Previous slide"]') ||
+          target.closest('button[aria-label="Next slide"]') ||
+          target.closest('svg')?.parentElement?.closest('button[aria-label*="slide"]')) {
+        return;
+      }
+
+      isDown = true;
+      hasDragged = false;
+      carousel.style.cursor = 'grabbing';
+      carousel.style.userSelect = 'none';
+      // Track starting mouse X position and current scroll position
+      startX = e.clientX;
+      scrollLeft = carousel.scrollLeft;
+      
+      // Prevent default to avoid text selection and image dragging
+      e.preventDefault();
+    };
+
+    const handleMouseLeave = () => {
+      if (isDown) {
+        isDown = false;
+        hasDragged = false;
+        carousel.style.cursor = 'grab';
+        carousel.style.userSelect = '';
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (isDown) {
+        // If we dragged, prevent button click and reset button tracking
+        if (hasDragged) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Reset button click tracking to prevent accidental navigation
+          carouselButtonMouseDownRef.current = null;
+          carouselButtonHasDraggedRef.current = true;
+        }
+        isDown = false;
+        hasDragged = false;
+        carousel.style.cursor = 'grab';
+        carousel.style.userSelect = '';
+      }
+    };
+
+    const handleDocumentMouseUp = (e: MouseEvent) => {
+      if (isDown) {
+        // If we dragged, prevent button click and reset button tracking
+        if (hasDragged) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Reset button click tracking to prevent accidental navigation
+          carouselButtonMouseDownRef.current = null;
+          carouselButtonHasDraggedRef.current = true;
+        }
+        isDown = false;
+        hasDragged = false;
+        carousel.style.cursor = 'grab';
+        carousel.style.userSelect = '';
+      }
+    };
+
+    const handleDocumentMouseMove = (e: MouseEvent) => {
+      if (!isDown) return;
+      
+      // Calculate distance moved
+      const currentX = e.clientX;
+      const deltaX = currentX - startX;
+      
+      // Only consider it a drag if moved more than 3px
+      if (Math.abs(deltaX) > 3) {
+        hasDragged = true;
+      }
+      
+      // Prevent default drag behavior and text selection
+      e.preventDefault();
+      
+      // Scroll the carousel: moving mouse right scrolls content right, moving mouse left scrolls content left
+      // User wants: drag right reveals right content (scrollLeft increases), drag left reveals left content (scrollLeft decreases)
+      // Formula: scrollLeft = initialScrollLeft + deltaX
+      // This makes: drag right (positive deltaX) increases scrollLeft (shows right content)
+      const newScrollLeft = scrollLeft + deltaX;
+      
+      // Ensure we don't scroll beyond bounds
+      const maxScroll = carousel.scrollWidth - carousel.clientWidth;
+      carousel.scrollLeft = Math.max(0, Math.min(newScrollLeft, maxScroll));
+    };
+
+    updateScrollbar();
+    carousel.style.cursor = 'grab';
+    carousel.addEventListener('wheel', handleWheel, { passive: false });
+    carousel.addEventListener('dragstart', handleDragStart);
+    carousel.addEventListener('mousedown', handleMouseDown);
+    carousel.addEventListener('mouseleave', handleMouseLeave);
+    carousel.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+    document.addEventListener('mousemove', handleDocumentMouseMove);
+    window.addEventListener('resize', updateScrollbar);
+
+    return () => {
+      carousel.removeEventListener('wheel', handleWheel);
+      carousel.removeEventListener('dragstart', handleDragStart);
+      carousel.removeEventListener('mousedown', handleMouseDown);
+      carousel.removeEventListener('mouseleave', handleMouseLeave);
+      carousel.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      window.removeEventListener('resize', updateScrollbar);
+      const styleElement = document.getElementById('popular-questions-carousel-scrollbar-style');
+      if (styleElement) {
+        styleElement.remove();
+      }
+    };
+  }, []);
+
+  // Document-level mouse tracking for carousel button click-vs-drag detection
+  useEffect(() => {
+    const handleDocumentMouseMove = (e: MouseEvent) => {
+      if (!carouselButtonMouseDownRef.current) return;
+      const deltaX = Math.abs(e.clientX - carouselButtonMouseDownRef.current.x);
+      const deltaY = Math.abs(e.clientY - carouselButtonMouseDownRef.current.y);
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      // If moved more than 8px, consider it a drag
+      if (distance > 8) {
+        carouselButtonHasDraggedRef.current = true;
+      }
+    };
+
+    const handleDocumentMouseUp = () => {
+      // Reset tracking on document mouseup (in case mouse left button area)
+      // The click handler will still check, but this ensures cleanup
+      if (carouselButtonMouseDownRef.current) {
+        // Small delay to allow click handler to run first
+        setTimeout(() => {
+          carouselButtonMouseDownRef.current = null;
+          carouselButtonHasDraggedRef.current = false;
+        }, 100);
+      }
+    };
+
+    document.addEventListener('mousemove', handleDocumentMouseMove);
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+    };
+  }, []);
+
+  // Center the mobile carousel on initial load
+  useEffect(() => {
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
+    if (!isMobile) return;
+
+    // Only center once on initial load - use a flag to prevent multiple centers
+    let hasCentered = false;
+    
+    const centerCarousel = () => {
+      if (hasCentered) return;
+      if (carousel.scrollWidth > carousel.clientWidth && carousel.scrollLeft === 0) {
+        // Temporarily disable smooth scrolling to set position instantly
+        const originalScrollBehavior = carousel.style.scrollBehavior;
+        carousel.style.scrollBehavior = 'auto';
+        
+        const centerScroll = (carousel.scrollWidth - carousel.clientWidth) / 2;
+        // Set scrollLeft directly for instant positioning (no animation)
+        carousel.scrollLeft = centerScroll;
+        hasCentered = true;
+        
+        // Immediately update the carousel index to center position
+        const cardWidth = 280;
+        const gap = 12;
+        const centerIndex = Math.round(centerScroll / (cardWidth + gap));
+        setCarouselIndex(Math.min(centerIndex, SUGGESTED_QUESTIONS.length - 1));
+        
+        // Restore smooth scrolling after positioning
+        requestAnimationFrame(() => {
+          carousel.style.scrollBehavior = originalScrollBehavior || '';
+        });
+      }
+    };
+
+    // Wait a bit to ensure carousel is fully rendered and other useEffects are set up
+    const timeoutId = setTimeout(() => {
+      centerCarousel();
+      // Double-check with requestAnimationFrame
+      requestAnimationFrame(centerCarousel);
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  // Center the desktop carousel on initial load (runs after other useEffects)
+  useEffect(() => {
+    const carousel = popularQuestionsCarouselRef.current;
+    if (!carousel) return;
+
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+    if (!isDesktop) return;
+
+    // Only center once on initial load - use a flag to prevent multiple centers
+    let hasCentered = false;
+    
+    const centerCarousel = () => {
+      if (hasCentered) return;
+      if (carousel.scrollWidth > carousel.clientWidth && carousel.scrollLeft === 0) {
+        // Temporarily disable smooth scrolling to set position instantly
+        const originalScrollBehavior = carousel.style.scrollBehavior;
+        carousel.style.scrollBehavior = 'auto';
+        
+        const centerScroll = (carousel.scrollWidth - carousel.clientWidth) / 2;
+        // Set scrollLeft directly for instant positioning (no animation)
+        carousel.scrollLeft = centerScroll;
+        hasCentered = true;
+        
+        // Immediately update the carousel index to center position
+        const cardWidth = 280;
+        const gap = 12;
+        const centerIndex = Math.round(centerScroll / (cardWidth + gap));
+        setPopularQuestionsCarouselIndex(Math.min(centerIndex, SUGGESTED_QUESTIONS.length - 1));
+        
+        // Restore smooth scrolling after positioning
+        requestAnimationFrame(() => {
+          carousel.style.scrollBehavior = originalScrollBehavior || '';
+        });
+      }
+    };
+
+    // Wait a bit to ensure carousel is fully rendered and other useEffects are set up
+    const timeoutId = setTimeout(() => {
+      centerCarousel();
+      // Double-check with requestAnimationFrame
+      requestAnimationFrame(centerCarousel);
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   useEffect(() => {
@@ -591,6 +1159,68 @@ export default function Home() {
     }
   };
 
+  // Helper function to navigate carousel left
+  const navigateCarouselLeft = () => {
+    const carousel = popularQuestionsCarouselRef.current;
+    if (!carousel) return;
+    const cardWidth = 280;
+    const gap = 12;
+    const scrollAmount = cardWidth + gap;
+    carousel.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+  };
+
+  // Helper function to navigate carousel right
+  const navigateCarouselRight = () => {
+    const carousel = popularQuestionsCarouselRef.current;
+    if (!carousel) return;
+    const cardWidth = 280;
+    const gap = 12;
+    const scrollAmount = cardWidth + gap;
+    carousel.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+  };
+
+  // Handle click-vs-drag detection for carousel buttons
+  const handleCarouselButtonMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
+    carouselButtonMouseDownRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now(),
+      target: e.currentTarget
+    };
+    carouselButtonHasDraggedRef.current = false;
+  };
+
+  const handleCarouselButtonClick = (e: React.MouseEvent<HTMLButtonElement>, question: string) => {
+    // Check if this was a drag or a quick click
+    if (!carouselButtonMouseDownRef.current) {
+      // No mousedown recorded, allow click
+      handleSuggestedQuestion(question);
+      return;
+    }
+
+    const timeDelta = Date.now() - carouselButtonMouseDownRef.current.time;
+    const deltaX = Math.abs(e.clientX - carouselButtonMouseDownRef.current.x);
+    const deltaY = Math.abs(e.clientY - carouselButtonMouseDownRef.current.y);
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Only trigger navigation if:
+    // 1. It was a quick click (< 250ms)
+    // 2. AND the mouse didn't move more than 8px
+    // 3. AND we didn't detect a drag
+    if (timeDelta < 250 && distance <= 8 && !carouselButtonHasDraggedRef.current) {
+      handleSuggestedQuestion(question);
+    }
+
+    // Reset tracking
+    carouselButtonMouseDownRef.current = null;
+    carouselButtonHasDraggedRef.current = false;
+  };
+
+  const handleCarouselButtonMouseUp = () => {
+    // Reset tracking on mouseup (will be handled by document handler if mouse left button)
+    // Don't reset here to allow click handler to check
+  };
+
   const handleSuggestedQuestion = async (question: string) => {
     // Automatically send the suggested question
     if (isLoading) return;
@@ -805,7 +1435,7 @@ export default function Home() {
         <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full blur-3xl"></div>
       </div>
       
-      <div className={`container mx-auto px-4 lg:px-6 max-w-7xl relative z-10 ${messages.length > 0 ? 'py-4 md:py-6' : 'py-6 md:py-8'} ${topThreeRecommendations.length > 0 ? 'pb-24 lg:pb-0' : ''}`}>
+      <div className={`container mx-auto px-4 lg:px-6 max-w-7xl relative z-10 ${messages.length > 0 ? (messages.some(msg => msg.role === 'user') ? 'pt-20 lg:pt-4 md:pt-6' : 'pt-4 md:pt-6') : 'pt-6 md:pt-8'} ${messages.length > 0 ? 'pb-4 md:pb-6' : 'pb-6 md:pb-8'} ${topThreeRecommendations.length > 0 ? 'pb-24 lg:pb-0' : ''}`}>
         {/* Hero Section */}
         <section className={`relative overflow-hidden ${messages.length > 0 ? 'py-4 md:py-6 mb-2' : 'py-2 md:py-4 mb-4'}`}>
           {/* Hero content */}
@@ -863,6 +1493,33 @@ export default function Home() {
           </header>
         )}
 
+        {/* Fixed Mobile Input Box at Top - Only show on mobile after first question */}
+        {messages.some(msg => msg.role === 'user') && (
+          <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-md px-4 py-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Ask about credit cards..."
+                  className="w-full min-h-[56px] h-10 py-7 px-3 pr-16 text-base border border-input rounded-md shadow-card bg-card text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-200"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={isLoading || !input.trim()}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 min-w-[48px] min-h-[48px] bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl hover:from-teal-700 hover:to-cyan-700 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center shadow-lg shadow-teal-500/30 hover:shadow-xl hover:shadow-teal-500/40 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {/* Popular Questions Section - Only show when no messages */}
         {messages.length === 0 && (
@@ -883,7 +1540,8 @@ export default function Home() {
                   <button
                     key={index}
                     onClick={() => handleSuggestedQuestion(question.text)}
-                    className="bg-white rounded-xl p-2.5 border border-slate-200 hover:border-blue-300 hover:shadow-md hover:scale-105 transition-all duration-200 h-[240px] w-[280px] flex-shrink-0 snap-center flex flex-col"
+                    disabled={isLoading}
+                    className="bg-white rounded-xl p-2.5 border border-slate-200 hover:border-blue-300 hover:shadow-md hover:scale-105 transition-all duration-200 h-[240px] w-[280px] flex-shrink-0 snap-center flex flex-col disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex flex-col items-center text-center space-y-4 flex-1 justify-center">
                       <div className="rounded-full bg-primary/10 p-4 min-w-[56px] min-h-[56px] flex items-center justify-center">
@@ -922,29 +1580,90 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            {/* Desktop Grid */}
-            <div className="hidden lg:grid grid-cols-4 gap-3 max-w-5xl mx-auto">
-              {desktopQuestions.map((question, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSuggestedQuestion(question.text)}
-                  className="bg-white rounded-xl p-4 border border-slate-200 hover:border-blue-300 hover:shadow-md hover:scale-105 transition-all duration-200 min-h-[140px] flex flex-col"
-                >
-                  <div className="flex flex-col items-center text-center gap-2 flex-1">
-                    <div className="flex-shrink-0 rounded-full bg-primary/10 p-2 flex items-center justify-center">
-                      {renderSuggestedIcon(question.icon)}
-                    </div>
-                    <div className="flex-1 min-w-0 w-full flex flex-col justify-center">
-                      <h3 className="font-bold text-foreground mb-1.5 text-sm leading-tight">
+            {/* Desktop Carousel */}
+            <div 
+              className="hidden lg:block relative"
+              onMouseEnter={() => setIsCarouselHovered(true)}
+              onMouseLeave={() => setIsCarouselHovered(false)}
+            >
+              {/* Left Arrow Button */}
+              <button
+                onClick={navigateCarouselLeft}
+                className={`absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-lg border border-slate-200 hover:bg-white hover:shadow-xl transition-all duration-200 ${
+                  isCarouselHovered ? 'opacity-100 translate-x-2' : 'opacity-0 -translate-x-2 pointer-events-none'
+                }`}
+                aria-label="Previous slide"
+              >
+                <ChevronLeft className="w-6 h-6 text-slate-700" />
+              </button>
+
+              {/* Right Arrow Button */}
+              <button
+                onClick={navigateCarouselRight}
+                className={`absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-lg border border-slate-200 hover:bg-white hover:shadow-xl transition-all duration-200 ${
+                  isCarouselHovered ? 'opacity-100 -translate-x-2' : 'opacity-0 translate-x-2 pointer-events-none'
+                }`}
+                aria-label="Next slide"
+              >
+                <ChevronRight className="w-6 h-6 text-slate-700" />
+              </button>
+
+              <div 
+                ref={popularQuestionsCarouselRef}
+                className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 -mx-4"
+                style={{
+                  WebkitOverflowScrolling: 'touch',
+                  scrollBehavior: 'smooth',
+                  overscrollBehaviorX: 'contain'
+                }}
+              >
+                {SUGGESTED_QUESTIONS.map((question, index) => (
+                  <button
+                    key={index}
+                    onMouseDown={handleCarouselButtonMouseDown}
+                    onMouseUp={handleCarouselButtonMouseUp}
+                    onClick={(e) => handleCarouselButtonClick(e, question.text)}
+                    disabled={isLoading}
+                    className="bg-white rounded-xl p-2.5 border border-slate-200 hover:border-blue-300 hover:shadow-md hover:scale-105 transition-all duration-200 h-[240px] w-[280px] flex-shrink-0 snap-center flex flex-col disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex flex-col items-center text-center space-y-4 flex-1 justify-center">
+                      <div className="rounded-full bg-primary/10 p-4 min-w-[56px] min-h-[56px] flex items-center justify-center">
+                        {renderSuggestedIcon(question.icon, 'w-7 h-7', true)}
+                      </div>
+                      <h3 className="font-semibold text-base text-card-foreground leading-tight">
                         {question.text}
                       </h3>
-                      <p className="text-xs text-muted-foreground leading-snug">
+                      <p className="text-base md:text-sm text-muted-foreground leading-relaxed">
                         {question.description}
                       </p>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))}
+              </div>
+              {/* Carousel Indicators */}
+              <div className="flex justify-center gap-2 mt-4">
+                {SUGGESTED_QUESTIONS.map((_, index) => (
+                  <button
+                    key={index}
+                    data-indicator-button
+                    onClick={() => {
+                      if (!hasDraggedIndicatorRef.current && popularQuestionsCarouselRef.current) {
+                        const cardWidth = 280; // Fixed card width
+                        const gap = 12; // gap-3 = 12px
+                        popularQuestionsCarouselRef.current.scrollTo({
+                          left: index * (cardWidth + gap),
+                          behavior: 'smooth'
+                        });
+                      }
+                    }}
+                    className={`w-2 h-2 rounded-full transition-all duration-200 cursor-grab active:cursor-grabbing select-none ${
+                      index === popularQuestionsCarouselIndex ? 'bg-primary w-6' : 'bg-slate-300'
+                    }`}
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                    aria-label={`Go to slide ${index + 1}`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -961,7 +1680,6 @@ export default function Home() {
                   onKeyPress={handleKeyPress}
                   placeholder="Ask about credit cards, rewards, travel perks..."
                   className="w-full h-auto py-3 md:py-6 px-3 pr-16 md:pr-24 text-base md:text-sm border border-input rounded-md bg-card shadow-card text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all"
-                  disabled={isLoading}
                 />
                 <button
                   onClick={handleSend}
@@ -1222,25 +1940,10 @@ export default function Home() {
                     
                     return (
                       <>
-                        {/* Mobile: Show SwipeToLoad and cartoon */}
+                        {/* Mobile: Show SwipeToLoad only (cartoon moved to bottom of chat box) */}
                         <div className="lg:hidden mb-6 max-w-2xl mx-auto">
                           <div className="flex flex-col items-center pt-0 pb-4">
                             <SwipeToLoad messages={useFunMessages ? FUN_LOADING_MESSAGES : undefined} />
-                            {currentCartoon && (
-                              <div className="mt-3 flex flex-col items-center">
-                                <div className="w-full max-w-lg rounded-xl overflow-hidden shadow-lg border border-slate-200 bg-slate-50 flex items-center justify-center">
-                                  <img
-                                    src={currentCartoon.imageUrl}
-                                    alt="Loading cartoon"
-                                    className="max-w-full max-h-64 object-contain"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            )}
                           </div>
                         </div>
                         {/* Desktop: Show simple thinking indicator */}
@@ -1269,29 +1972,107 @@ export default function Home() {
                   {dynamicSuggestions.length > 0 && messages.length > 0 && !isLoading && (
                     <div className="mt-6 pt-6 border-t border-slate-200">
                       <p className="text-xs md:text-sm text-slate-500 mb-4 font-semibold uppercase tracking-wide">You might also ask:</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Carousel for both mobile and desktop */}
+                      <div 
+                        ref={suggestionsCarouselRef}
+                        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 -mx-4 bg-slate-50/50 rounded-lg py-3 lg:bg-transparent lg:py-0"
+                        style={{
+                          WebkitOverflowScrolling: 'touch',
+                          scrollBehavior: 'smooth',
+                          overscrollBehaviorX: 'contain'
+                        }}
+                      >
                         {dynamicSuggestions.slice(0, 4).map((suggestion, index) => (
                           <button
                             key={index}
                             onClick={() => handleSuggestedQuestion(suggestion)}
                             disabled={isLoading}
-                            className="px-4 py-3 min-h-12 bg-white border border-slate-200 rounded-xl text-base md:text-sm text-slate-700 hover:bg-slate-50 hover:border-teal-300 hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 group focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                            className="bg-white rounded-xl p-2 border border-slate-200 hover:border-teal-300 hover:shadow-md hover:scale-105 transition-all duration-200 h-[160px] w-[200px] lg:h-[240px] lg:w-[280px] flex-shrink-0 snap-center flex flex-col disabled:opacity-50 disabled:cursor-not-allowed group focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
                           >
-                            <span className="text-lg group-hover:scale-110 transition-transform flex-shrink-0">{getSuggestionIcon(suggestion)}</span>
-                            <span className="text-left flex-1 font-medium break-words">{suggestion}</span>
+                            <div className="flex flex-col items-center text-center space-y-2 flex-1 justify-center">
+                              <div className="rounded-full bg-primary/10 p-2 min-w-[40px] min-h-[40px] lg:p-4 lg:min-w-[56px] lg:min-h-[56px] flex items-center justify-center">
+                                <span className="text-lg lg:text-2xl group-hover:scale-110 transition-transform">{getSuggestionIcon(suggestion)}</span>
+                              </div>
+                              <h3 className="font-semibold text-xs lg:text-base text-card-foreground leading-tight px-2">
+                                {suggestion}
+                              </h3>
+                            </div>
                           </button>
                         ))}
                       </div>
+                      {/* Carousel Indicators */}
+                      {dynamicSuggestions.length > 0 && (
+                        <div className="flex justify-center gap-2 mt-4">
+                          {dynamicSuggestions.slice(0, 4).map((_, index) => (
+                            <button
+                              key={index}
+                              onClick={() => {
+                                if (suggestionsCarouselRef.current) {
+                                  // Mobile card width is 200px, desktop is 280px
+                                  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
+                                  const cardWidth = isMobile ? 200 : 280;
+                                  const gap = 12; // gap-3 = 12px
+                                  suggestionsCarouselRef.current.scrollTo({
+                                    left: index * (cardWidth + gap),
+                                    behavior: 'smooth'
+                                  });
+                                }
+                              }}
+                              className={`w-2 h-2 rounded-full transition-all duration-200 ${
+                                index === suggestionsCarouselIndex ? 'bg-primary w-6' : 'bg-slate-300'
+                              }`}
+                              aria-label={`Go to slide ${index + 1}`}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
               )}
               </div>
               <div ref={messagesEndRef} />
+              
+              {/* Mobile: Show cartoon at bottom of chat box on credit card background */}
+              {currentCartoon && (
+                <div className="lg:hidden mt-4 mb-2 flex flex-col items-center flex-shrink-0">
+                  <div className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl relative" style={{
+                    aspectRatio: '1.586 / 1', // Standard credit card ratio
+                    background: 'linear-gradient(135deg, #93c5fd 0%, #bfdbfe 50%, #dbeafe 100%)',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2)'
+                  }}>
+                    {/* Credit card shine effect */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent pointer-events-none" />
+                    
+                    {/* Card chip */}
+                    <div className="absolute top-4 left-4 w-10 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-md shadow-lg" style={{
+                      clipPath: 'polygon(20% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 20%)'
+                    }} />
+                    
+                    {/* Cartoon image */}
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <img
+                        src={currentCartoon.imageUrl}
+                        alt="Loading cartoon"
+                        className="max-w-full max-h-full object-contain drop-shadow-lg"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Card number pattern (subtle) */}
+                    <div className="absolute bottom-4 left-4 text-white/30 text-xs font-mono">
+                      •••• •••• •••• ••••
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
-            {/* Input Area */}
-            <div className={`flex flex-col sm:flex-row gap-3 mt-auto border-t border-slate-200 flex-shrink-0 ${messages.some(msg => msg.role === 'user') ? 'pt-4 md:pt-6' : 'pt-3 md:pt-4'}`}>
+            {/* Input Area - Hidden on mobile after first question, visible on desktop */}
+            <div className={`hidden lg:flex flex-col sm:flex-row gap-3 mt-auto border-t border-slate-200 flex-shrink-0 ${messages.some(msg => msg.role === 'user') ? 'pt-4 md:pt-6' : 'pt-3 md:pt-4'}`}>
                 <div className="flex-1 relative lg:static">
                   <input
                     type="text"
@@ -1300,22 +2081,12 @@ export default function Home() {
                     onKeyPress={handleKeyPress}
                     placeholder="Ask about credit cards..."
                     className="w-full min-h-[56px] h-10 py-7 lg:py-6 px-3 pr-16 lg:pr-24 text-base border border-input rounded-md shadow-card bg-card text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-200"
-                    disabled={isLoading}
                   />
-                  <button
-                    onClick={handleSend}
-                    disabled={isLoading || !input.trim()}
-                    className="lg:hidden absolute right-2 top-1/2 -translate-y-1/2 min-w-[48px] min-h-[48px] bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl hover:from-teal-700 hover:to-cyan-700 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center shadow-lg shadow-teal-500/30 hover:shadow-xl hover:shadow-teal-500/40 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  </button>
                 </div>
                 <button
                   onClick={handleSend}
                   disabled={isLoading || !input.trim()}
-                  className="hidden lg:flex px-5 md:px-6 h-12 lg:py-3 lg:h-auto bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl hover:from-teal-700 hover:to-cyan-700 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed transition-all duration-200 text-base lg:text-sm flex items-center justify-center min-w-[56px] shadow-lg shadow-teal-500/30 hover:shadow-xl hover:shadow-teal-500/40 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                  className="px-5 md:px-6 h-12 lg:py-3 lg:h-auto bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl hover:from-teal-700 hover:to-cyan-700 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed transition-all duration-200 text-base lg:text-sm flex items-center justify-center min-w-[56px] shadow-lg shadow-teal-500/30 hover:shadow-xl hover:shadow-teal-500/40 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -1327,9 +2098,9 @@ export default function Home() {
 
           {/* Right Column - Credit Card Recommendations - Only show after a question is asked */}
           {messages.some(msg => msg.role === 'user') && (
-          <div className="lg:col-span-3 flex flex-col h-[500px] lg:h-[700px]" style={{ overflow: 'hidden' }}>
+          <div className="hidden lg:flex lg:col-span-3 flex-col h-[500px] lg:h-[700px]" style={{ overflow: 'hidden' }}>
             <div className="bg-white rounded-2xl shadow-2xl shadow-slate-300/40 border border-slate-200/60 p-4 lg:p-8 h-full flex flex-col backdrop-blur-sm bg-gradient-to-br from-white to-slate-50/50" style={{ maxHeight: '100%', overflow: 'hidden' }}>
-              <div className="flex items-center gap-3 mb-6 lg:mb-8 flex-shrink-0">
+              <div className="hidden lg:flex items-center gap-3 mb-6 lg:mb-8 flex-shrink-0">
                 <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
                   <svg className="w-5 h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -1523,9 +2294,9 @@ export default function Home() {
                             </div>
                         ))}
                       </div>
-                      {/* Cartoon below the cards */}
+                      {/* Cartoon below the cards - Desktop only */}
                       {currentCartoon && (
-                        <div className="mt-6 flex flex-col items-center">
+                        <div className="hidden lg:flex mt-6 flex-col items-center">
                           <div className="w-full max-w-lg rounded-xl overflow-hidden shadow-lg border border-slate-200 bg-slate-50 flex items-center justify-center">
                             <img
                               src={currentCartoon.imageUrl}
@@ -1552,17 +2323,54 @@ export default function Home() {
         {/* Mobile-only persistent bottom bar with recommended credit cards */}
         {topThreeRecommendations.length > 0 && (
           <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-50 safe-area-inset-bottom">
-            <div className="px-4 py-3">
-              <div className="flex gap-2">
+            <div className="px-3 py-2.5">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide">
                 {topThreeRecommendations.map((rec, index) => (
                   <a
                     key={index}
                     href={rec.apply_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg px-3 py-2.5 text-sm font-semibold text-center hover:from-teal-700 hover:to-cyan-700 transition-all duration-200 shadow-md shadow-teal-500/30 active:scale-95"
+                    className="flex-shrink-0 w-[calc(33.333%-0.5rem)] min-w-[140px] bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm hover:shadow-md hover:border-teal-300 transition-all duration-200 active:scale-95 flex flex-col"
                   >
-                    {rec.credit_card_name}
+                    {/* Card Name */}
+                    <h4 className="font-semibold text-xs text-slate-900 mb-1.5 leading-tight line-clamp-2">
+                      {rec.credit_card_name}
+                    </h4>
+                    
+                    {/* Fields */}
+                    <div className="space-y-1 text-[10px] text-slate-600 flex-grow">
+                      {/* Annual Fee */}
+                      {rec.annual_fee && (
+                        <div className="flex justify-between items-start">
+                          <span className="font-medium text-slate-500">Fee:</span>
+                          <span className="text-slate-700 text-right font-medium line-clamp-1">{rec.annual_fee}</span>
+                        </div>
+                      )}
+                      
+                      {/* Intro Offer */}
+                      {rec.intro_offer && (
+                        <div className="flex justify-between items-start">
+                          <span className="font-medium text-slate-500">Intro:</span>
+                          <span className="text-slate-700 text-right font-medium line-clamp-1">{rec.intro_offer}</span>
+                        </div>
+                      )}
+                      
+                      {/* Perks */}
+                      {rec.perks && (
+                        <div className="flex justify-between items-start">
+                          <span className="font-medium text-slate-500">Perks:</span>
+                          <span className="text-slate-700 text-right font-medium line-clamp-1">{rec.perks}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Apply Button */}
+                    <div className="mt-2 pt-2 border-t border-slate-100">
+                      <div className="bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded text-[10px] font-semibold py-1.5 text-center">
+                        Apply
+                      </div>
+                    </div>
                   </a>
                 ))}
               </div>
