@@ -64,4 +64,42 @@ body {
   display: none;
 }
 
+/* Ensure only left scrollbar appears for RTL containers */
+[dir="rtl"]::-webkit-scrollbar {
+  width: 8px;
+}
+
+[dir="rtl"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[dir="rtl"]::-webkit-scrollbar-thumb {
+  background: rgb(203, 213, 225);
+  border-radius: 4px;
+}
+
+/* Hide any potential right-side scrollbar */
+.scrollbar-thin[dir="rtl"] {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203, 213, 225) transparent;
+}
+
+.scrollbar-thin[dir="rtl"]::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar-thin[dir="rtl"]::-webkit-scrollbar-track {
+  background: rgb(241, 245, 249);
+  border-radius: 4px;
+}
+
+.scrollbar-thin[dir="rtl"]::-webkit-scrollbar-thumb {
+  background: rgb(203, 213, 225);
+  border-radius: 4px;
+}
+
+.scrollbar-thin[dir="rtl"]::-webkit-scrollbar-thumb:hover {
+  background: rgb(148, 163, 184);
+}
+
 

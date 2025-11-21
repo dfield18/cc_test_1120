@@ -696,7 +696,7 @@ async function generateResponseAboutPreviousCards(
       content: `You are a helpful credit card assistant. The user is asking a question about cards that were ALREADY shown to them. Answer their question by ONLY referencing these specific cards. Do NOT mention or recommend any other cards.
 
 Return JSON: {
-  "summary": "A markdown-formatted response that:\n1. Directly answers the user's question\n2. References ONLY the cards that were previously shown\n3. Provides specific information about which cards (if any) match the criteria\n4. Uses markdown links: [Card Name](application_url) for each card mentioned\n\nBe specific and helpful. If no cards match, say so clearly.",
+  "summary": "A COMPLETE markdown-formatted response that FULLY answers the user's question. You MUST include:\n1. A direct answer to the user's question\n2. Specific information for EACH card that matches the criteria (if asking about features/requirements)\n3. Use markdown links: [Card Name](application_url) for each card mentioned\n4. Provide ALL relevant details - do NOT just say you're going to answer, actually provide the complete answer\n5. If asking about requirements (like credit scores), list the specific requirement for EACH card\n6. If asking about features, list which cards have those features with details\n\nCRITICAL: Your response must be a COMPLETE answer, not just an introduction. Include all the information the user asked for. If no cards match, say so clearly.\n\nEXAMPLE of a COMPLETE answer:\nIf asked \"What are the credit score requirements for these cards?\", provide:\n\"Here are the credit score requirements for the previously shown cards:\n\n- **[Chase Sapphire Preferred](url)**: Requires a credit score of 690 or higher\n- **[Capital One Venture](url)**: Requires a credit score of 700 or higher\n- **[American Express Gold](url)**: Requires a credit score of 670 or higher\"\n\nNOT just: \"Here are the credit score requirements for the previously shown cards:\"",
   "cards": [] // Empty array - we're not showing new cards, just answering about existing ones
 }
 
@@ -716,7 +716,7 @@ IMPORTANT: Only reference the cards provided. Do not suggest new cards.`,
   
   messages.push({
     role: 'user',
-    content: `User question: ${userQuery}\n\nPreviously shown cards:\n${cardsContext}\n\nAnswer the user's question by ONLY referencing these specific cards.`,
+    content: `User question: ${userQuery}\n\nPreviously shown cards:\n${cardsContext}\n\nProvide a COMPLETE answer to the user's question. Include all relevant details for each card. Do NOT just introduce your answer - provide the full information the user requested. Use markdown links [Card Name](application_url) for each card you mention.`,
   });
   
   try {
@@ -724,18 +724,46 @@ IMPORTANT: Only reference the cards provided. Do not suggest new cards.`,
       model: CHAT_MODEL,
       messages: messages,
       temperature: 0.3,
-      max_tokens: 500,
+      max_tokens: 1000, // Increased to allow for complete answers with multiple cards
       response_format: { type: 'json_object' },
     });
     
     const responseText = completion.choices[0]?.message?.content || '{}';
     const response = JSON.parse(responseText);
     
+    // Validate that we got a complete response, not just an introduction
+    let summary = response.summary || `Here's information about the cards you asked about.`;
+    
+    // Check if the response seems incomplete (just an introduction without details)
+    // If it's too short or ends with a colon, it might be incomplete
+    const summaryTrimmed = summary.trim();
+    if (summaryTrimmed.length < 100 && (summaryTrimmed.endsWith(':') || summaryTrimmed.endsWith(':'))) {
+      console.warn('Response appears incomplete, regenerating with more explicit prompt...');
+      // Retry with an even more explicit prompt
+      const retryMessages = [...messages];
+      retryMessages[retryMessages.length - 1] = {
+        role: 'user',
+        content: `${retryMessages[retryMessages.length - 1].content}\n\nIMPORTANT: You must provide the ACTUAL information, not just say you will provide it. For example, if asked about credit scores, list each card's credit score requirement. If asked about fees, list each card's annual fee. Include all the details now.`,
+      };
+      
+      const retryCompletion = await openai.chat.completions.create({
+        model: CHAT_MODEL,
+        messages: retryMessages,
+        temperature: 0.3,
+        max_tokens: 1000,
+        response_format: { type: 'json_object' },
+      });
+      
+      const retryResponseText = retryCompletion.choices[0]?.message?.content || '{}';
+      const retryResponse = JSON.parse(retryResponseText);
+      summary = retryResponse.summary || summary;
+    }
+    
     const title = await generateRecommendationTitle(userQuery);
     
     return {
       recommendations: [], // Empty - we're not showing new cards
-      summary: response.summary || `Here's information about the cards you asked about.`,
+      summary: summary,
       rawModelAnswer: responseText,
       title: title,
     };

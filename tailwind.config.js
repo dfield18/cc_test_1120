@@ -18,6 +18,11 @@ module.exports = {
         card: '#FFFFFF', // HSL 0 0% 100% light mode
         input: '#E2E8F0', // HSL 220 13% 91% light mode (slate-200)
         ring: '#34CAFF', // Primary color for focus ring
+        border: '#E2E8F0', // slate-200
+        success: '#10B981', // emerald-500
+        secondary: '#F1F5F9', // slate-100
+        'secondary-foreground': '#0F172A', // slate-900
+        'primary-foreground': '#FFFFFF', // white
       },
       boxShadow: {
         'card': '0 2px 8px rgba(0, 0, 0, 0.04)', // Light mode

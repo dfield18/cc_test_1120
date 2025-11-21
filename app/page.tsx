@@ -5,7 +5,7 @@ import { Recommendation } from '@/types';
 import SwipeToLoad from '@/components/SwipeToLoad';
 import CartoonDisplay from '@/components/CartoonDisplay';
 import ReactMarkdown from 'react-markdown';
-import { Plane, ShoppingCart, Shield, User, Sparkles, CreditCard, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plane, ShoppingCart, Shield, User, Sparkles, CreditCard, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, Star, ExternalLink } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -31,7 +31,7 @@ const SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
   },
   { text: 'Show the best cards with no annual fee', description: 'Get great rewards without yearly costs', icon: 'creditcard' },
   { text: 'Recommend luxury travel credit cards?', description: 'Elite perks and lounge access', icon: 'premium' },
-  { text: 'Which cards are best for beginners or first-time credit users?', description: 'Easy approvals and simple rewards', icon: 'creditcard' },
+  { text: 'What are the best cards for beginners?', description: 'Easy approvals and simple rewards', icon: 'creditcard' },
   { text: 'What card should I get to build credit?', description: 'Secured and starter options', icon: 'creditcard' },
   { text: 'What are the best business credit cards?', description: 'Top rewards for small business spending', icon: 'premium' },
   { text: 'Show top cards for streaming and subscriptions', description: 'Earn more on Netflix, Spotify, etc.', icon: 'shopping' },
@@ -201,6 +201,10 @@ export default function Home() {
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
     if (!isDesktop) return; // Only run on desktop
     
+    // Don't scroll if input is focused
+    const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+    if (isInputFocused) return;
+    
     const userMessages = messages.filter((msg) => msg.role === 'user');
     const userMessageCount = userMessages.length;
     
@@ -208,6 +212,10 @@ export default function Home() {
     // For multiple messages, the scroll-to-latest logic will handle it
     if (userMessageCount <= 1) {
       const setScrollToTop = () => {
+        // Check again if input is focused before scrolling
+        const stillFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+        if (stillFocused) return;
+        
         if (chatContainerRef.current) {
           chatContainerRef.current.scrollTop = 0;
         }
@@ -1267,12 +1275,15 @@ export default function Home() {
 
   useEffect(() => {
     // Scroll the left box - show most recent question (both mobile and desktop)
-    // Only auto-scroll if user hasn't manually scrolled
-    if (chatContainerRef.current && !userHasScrolledLeftRef.current) {
+    // Only auto-scroll if user hasn't manually scrolled and input is not focused
+    const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+    
+    // Don't scroll if input is focused on desktop
+    if (chatContainerRef.current && !userHasScrolledLeftRef.current && !(isDesktop && isInputFocused)) {
       const userMessages = messages.filter((msg) => msg.role === 'user');
       const currentUserMessageCount = userMessages.length;
       const isNewQuestion = currentUserMessageCount > prevUserMessageCountRef.current;
-      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
       
       const scrollToLatest = (useSmooth: boolean = true) => {
         if (!chatContainerRef.current) return;
@@ -1622,7 +1633,9 @@ export default function Home() {
         if (suggestionsResponse.ok) {
           const suggestionsData = await suggestionsResponse.json();
           if (suggestionsData.suggestions && Array.isArray(suggestionsData.suggestions)) {
-            setDynamicSuggestions(suggestionsData.suggestions);
+            // Filter out questions longer than 65 characters and replace with shorter ones
+            const filteredSuggestions = filterSuggestionsByLength(suggestionsData.suggestions);
+            setDynamicSuggestions(filteredSuggestions);
           }
         }
       } catch (error) {
@@ -1717,6 +1730,50 @@ export default function Home() {
   const handleCarouselButtonMouseUp = () => {
     // Reset tracking on mouseup (will be handled by document handler if mouse left button)
     // Don't reset here to allow click handler to check
+  };
+
+  // Helper function to filter and replace questions longer than 65 characters
+  const filterSuggestionsByLength = (suggestions: string[]): string[] => {
+    const fallbackQuestions = [
+      'What cards offer the best cash back?',
+      'Show me cards with no annual fee',
+      'Which cards have travel benefits?',
+      'What are the best cards for everyday spending?',
+      'Show me cards with welcome bonuses',
+      'What cards offer the most points?',
+      'Which cards have no foreign fees?',
+      'What are the best student cards?'
+    ];
+    
+    const processed: string[] = [];
+    let fallbackIndex = 0;
+    
+    for (const suggestion of suggestions) {
+      if (suggestion.length <= 65) {
+        processed.push(suggestion);
+      } else {
+        // Replace with a fallback question that's under 65 characters
+        while (fallbackIndex < fallbackQuestions.length) {
+          const fallback = fallbackQuestions[fallbackIndex];
+          if (fallback.length <= 65 && !processed.includes(fallback)) {
+            processed.push(fallback);
+            fallbackIndex++;
+            break;
+          }
+          fallbackIndex++;
+        }
+        // If we've used all fallbacks, skip this one
+        if (fallbackIndex >= fallbackQuestions.length && processed.length < suggestions.length) {
+          // Try to truncate the original question
+          const truncated = suggestion.substring(0, 62) + '...';
+          if (truncated.length <= 65 && !processed.includes(truncated)) {
+            processed.push(truncated);
+          }
+        }
+      }
+    }
+    
+    return processed.slice(0, 4); // Ensure max 4 suggestions
   };
 
   const handleSuggestedQuestion = async (question: string) => {
@@ -1833,7 +1890,9 @@ export default function Home() {
         if (suggestionsResponse.ok) {
           const suggestionsData = await suggestionsResponse.json();
           if (suggestionsData.suggestions && Array.isArray(suggestionsData.suggestions)) {
-            setDynamicSuggestions(suggestionsData.suggestions);
+            // Filter out questions longer than 65 characters and replace with shorter ones
+            const filteredSuggestions = filterSuggestionsByLength(suggestionsData.suggestions);
+            setDynamicSuggestions(filteredSuggestions);
           }
         }
       } catch (error) {
@@ -1926,7 +1985,7 @@ export default function Home() {
       <style dangerouslySetInnerHTML={{__html: `
         @media (min-width: 1024px) {
           .desktop-grid-cols {
-            grid-template-columns: 40% 60% !important;
+            grid-template-columns: 32% 68% !important;
           }
         }
       `}} />
@@ -1942,6 +2001,35 @@ export default function Home() {
       </div>
       
       <div className={`container mx-auto px-4 lg:px-6 max-w-7xl relative z-10 ${messages.length > 0 ? (messages.some(msg => msg.role === 'user') ? 'pt-6 lg:pt-4 md:pt-6' : 'pt-4 md:pt-6') : 'pt-6 md:pt-8 lg:pt-4'} ${messages.length > 0 ? (messages.some(msg => msg.role === 'user') ? 'pb-24 lg:pb-4 md:pb-6' : 'pb-4 md:pb-6') : 'pb-6 md:pb-8'}`}>
+        {/* Feature boxes at top - Desktop only */}
+        {messages.length > 0 && (
+          <div className="hidden lg:flex justify-center gap-3 mb-4 pt-2">
+            {/* AI-Powered */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 lg:px-5 py-2.5 border border-slate-200/60 flex items-center gap-2 lg:gap-2.5 shadow-sm flex-shrink-0">
+              <svg className="h-5 w-5 lg:h-5 lg:w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+              <span className="text-slate-700 font-medium text-xs lg:text-sm">AI-Powered</span>
+            </div>
+            
+            {/* Personalized */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 lg:px-5 py-2.5 border border-slate-200/60 flex items-center gap-2 lg:gap-2.5 shadow-sm flex-shrink-0">
+              <svg className="h-5 w-5 lg:h-5 lg:w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+              <span className="text-slate-700 font-medium text-xs lg:text-sm">Personalized</span>
+            </div>
+            
+            {/* Free to Use */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 lg:px-5 py-2.5 border border-slate-200/60 flex items-center gap-2 lg:gap-2.5 shadow-sm flex-shrink-0">
+              <svg className="h-5 w-5 lg:h-5 lg:w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="text-slate-700 font-medium text-xs lg:text-sm">Free to Use</span>
+            </div>
+          </div>
+        )}
+
         {/* Hero Section */}
         <section className={`relative overflow-hidden ${messages.length > 0 ? 'py-2 md:py-6 mb-2 lg:mb-2' : 'py-2 md:py-4 lg:py-2 mb-2 lg:mb-4'}`}>
           {/* Hero content */}
@@ -1968,9 +2056,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Header - Feature boxes - Only show after user asks a question */}
+        {/* Header - Feature boxes - Mobile only (desktop shows at top) */}
         {messages.length > 0 && (
-          <header className="mb-3 text-center">
+          <header className="mb-3 text-center lg:hidden">
             <div className="flex flex-nowrap justify-center gap-2 lg:gap-3 mb-4 overflow-x-auto">
               {/* AI-Powered */}
               <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 lg:px-5 py-2.5 border border-slate-200/60 flex items-center gap-2 lg:gap-2.5 shadow-sm flex-shrink-0">
@@ -2197,7 +2285,7 @@ export default function Home() {
         {messages.length > 0 && (
         <div 
           ref={chatbotContainerRef} 
-          className={`grid gap-6 mb-6 mt-12 ${messages.some(msg => msg.role === 'user') ? 'grid-cols-1 desktop-grid-cols' : 'grid-cols-1 max-w-xl mx-auto'} ${messages.some(msg => msg.role === 'user') ? 'lg:h-[700px]' : 'h-[500px]'} overflow-visible lg:overflow-hidden`}
+          className={`grid gap-6 mb-6 mt-12 lg:mt-4 ${messages.some(msg => msg.role === 'user') ? 'grid-cols-1 desktop-grid-cols lg:-ml-12 lg:-mr-12' : 'grid-cols-1 max-w-xl mx-auto'} ${messages.some(msg => msg.role === 'user') ? 'lg:h-[700px]' : 'h-[500px]'} overflow-visible lg:overflow-hidden`}
         >
           {/* Left Column - Chatbot */}
           <div className={`${messages.some(msg => msg.role === 'user') ? 'lg:col-span-1' : 'col-span-1'} flex flex-col ${messages.some(msg => msg.role === 'user') ? 'min-h-[600px] lg:h-[700px]' : 'h-[500px]'} overflow-visible lg:overflow-hidden`}>
@@ -2215,6 +2303,10 @@ export default function Home() {
                     // On desktop, set scroll position based on message count
                     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
                     if (isDesktop) {
+                      // Don't scroll if input is focused
+                      const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+                      if (isInputFocused) return;
+                      
                       const userMessages = messages.filter((msg) => msg.role === 'user');
                       const userMessageCount = userMessages.length;
                       
@@ -2226,16 +2318,31 @@ export default function Home() {
                         
                         // Use multiple approaches to ensure it sticks
                         requestAnimationFrame(() => {
-                          if (el) el.scrollTop = 0;
+                          // Check again if input is focused
+                          const stillFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+                          if (el && !stillFocused) el.scrollTop = 0;
                           requestAnimationFrame(() => {
-                            if (el) el.scrollTop = 0;
+                            const stillFocused2 = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+                            if (el && !stillFocused2) el.scrollTop = 0;
                           });
                         });
                         
-                        setTimeout(() => { if (el) el.scrollTop = 0; }, 0);
-                        setTimeout(() => { if (el) el.scrollTop = 0; }, 10);
-                        setTimeout(() => { if (el) el.scrollTop = 0; }, 50);
-                        setTimeout(() => { if (el) el.scrollTop = 0; }, 100);
+                        setTimeout(() => { 
+                          const stillFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+                          if (el && !stillFocused) el.scrollTop = 0; 
+                        }, 0);
+                        setTimeout(() => { 
+                          const stillFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+                          if (el && !stillFocused) el.scrollTop = 0; 
+                        }, 10);
+                        setTimeout(() => { 
+                          const stillFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+                          if (el && !stillFocused) el.scrollTop = 0; 
+                        }, 50);
+                        setTimeout(() => { 
+                          const stillFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
+                          if (el && !stillFocused) el.scrollTop = 0; 
+                        }, 100);
                       }
                     }
                   }
@@ -2246,11 +2353,17 @@ export default function Home() {
                     : 'lg:overflow-hidden overflow-visible scrollbar-hide'
                 }`}
                 style={messages.some(msg => msg.role === 'user') 
-                  ? (isMobile ? { overflowX: 'hidden' } : { scrollbarWidth: 'thin', overflowX: 'hidden', touchAction: 'pan-y' })
+                  ? (isMobile ? { overflowX: 'hidden' } : { 
+                      scrollbarWidth: 'thin', 
+                      overflowX: 'hidden', 
+                      overflowY: 'auto',
+                      touchAction: 'pan-y',
+                      direction: 'rtl'
+                    })
                   : (isMobile ? {} : { overflow: 'hidden', scrollbarWidth: 'none' })
                 }
               >
-              <div className="lg:[direction:ltr] overflow-x-hidden min-w-0">
+              <div className="lg:[direction:ltr] overflow-x-hidden overflow-y-hidden min-w-0">
               {(
                 <>
                   {(() => {
@@ -2293,7 +2406,7 @@ export default function Home() {
                       );
 
                       return (
-                        <div key={displayIndex} className="mb-6 max-w-xl lg:mx-auto overflow-x-hidden min-w-0" data-message-index={displayIndex}>
+                        <div key={displayIndex} className="mb-6 max-w-xl lg:max-w-lg lg:mx-auto overflow-x-hidden min-w-0" data-message-index={displayIndex}>
                           {/* User Message */}
                           <div className="flex items-start gap-3 mb-4 flex-row-reverse lg:flex-row">
                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-teal-600 to-cyan-600 flex items-center justify-center shadow-sm">
@@ -2340,7 +2453,7 @@ export default function Home() {
                                   </div>
                                 </div>
                               ) : (
-                                <div className="bg-gray-50 rounded-xl p-4 px-5 shadow-sm flex-1 max-w-xl transition-all duration-200 min-w-0 overflow-hidden">
+                                <div className="bg-gray-50 rounded-xl p-4 px-5 shadow-sm flex-1 max-w-xl lg:max-w-lg transition-all duration-200 min-w-0 overflow-hidden">
                                   <div className="prose prose-sm max-w-none overflow-x-hidden">
                                     <ReactMarkdown
                                       components={{
@@ -2459,7 +2572,7 @@ export default function Home() {
                           </div>
                         </div>
                         {/* Desktop: Show simple thinking indicator */}
-                        <div className="hidden lg:flex items-start gap-3 mb-6 max-w-xl mx-auto">
+                        <div className="hidden lg:flex items-start gap-3 mb-6 max-w-xl lg:max-w-lg mx-auto">
                           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shadow-sm">
                             <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -2482,7 +2595,7 @@ export default function Home() {
                   
                   {/* Input Area - Desktop */}
                   {!isLoading && (
-                    <div className="hidden lg:flex flex-col sm:flex-row gap-3 mt-6 mb-6 max-w-xl lg:mx-auto">
+                    <div className="hidden lg:flex flex-col sm:flex-row gap-3 mt-6 mb-6 max-w-xl lg:max-w-lg lg:mx-auto">
                       <div className="flex items-start gap-3 w-full">
                         {/* Spacer to match avatar width */}
                         <div className="flex-shrink-0 w-8 h-8"></div>
@@ -2492,6 +2605,22 @@ export default function Home() {
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyPress={handleKeyPress}
+                            onFocus={(e) => {
+                              // Prevent scroll when input is focused on desktop
+                              if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+                                e.preventDefault();
+                                // Store current scroll position
+                                if (chatContainerRef.current) {
+                                  const currentScroll = chatContainerRef.current.scrollTop;
+                                  // Restore scroll position after a brief delay to prevent browser auto-scroll
+                                  setTimeout(() => {
+                                    if (chatContainerRef.current) {
+                                      chatContainerRef.current.scrollTop = currentScroll;
+                                    }
+                                  }, 0);
+                                }
+                              }
+                            }}
                             placeholder="Ask about credit cards..."
                             className="w-full min-h-[56px] h-10 py-7 lg:py-6 px-3 pr-16 lg:pr-24 text-base border border-input rounded-md shadow-card bg-card text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-200"
                           />
@@ -2787,7 +2916,7 @@ export default function Home() {
 
           {/* Right Column - Credit Card Recommendations - Only show after a question is asked */}
           {messages.some(msg => msg.role === 'user') && (
-          <div className="hidden lg:flex lg:col-span-1 flex-col h-[500px] lg:h-[700px]" style={{ overflow: 'hidden' }}>
+          <div className="hidden lg:flex lg:col-span-1 flex-col h-[500px] lg:h-[700px]" style={{ overflow: 'hidden', marginLeft: '5%' }}>
             <div className="lg:bg-transparent bg-white rounded-2xl lg:shadow-none lg:border-transparent shadow-2xl shadow-slate-300/40 border border-slate-200/60 p-4 lg:p-8 h-full flex flex-col backdrop-blur-sm" style={{ maxHeight: '100%', overflow: 'hidden' }}>
               <div className="hidden lg:flex items-center gap-3 mb-6 lg:mb-8 flex-shrink-0">
                 <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
@@ -2909,79 +3038,121 @@ export default function Home() {
                   return (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
-                        {mostRecentAssistantMessage.recommendations.slice(0, 4).map((rec, recIndex) => (
-                          <div
-                            key={recIndex}
-                            className="bg-gradient-to-br from-white via-white to-slate-50/30 rounded-xl border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:shadow-teal-200/30 transition-all duration-300 p-4 lg:p-6 flex flex-col group hover:border-teal-300/60 hover:-translate-y-1"
-                          >
-                            {/* Card Name */}
-                            <h3 className="font-semibold text-base lg:text-lg text-slate-900 mb-3 leading-tight">
-                              {rec.credit_card_name}
-                            </h3>
+                        {mostRecentAssistantMessage.recommendations.slice(0, 4).map((rec, recIndex) => {
+                          // Extract issuer from card name (usually first word)
+                          const cardNameParts = rec.credit_card_name.split(' ');
+                          const issuer = cardNameParts[0];
+                          const cardName = cardNameParts.slice(1).join(' ') || rec.credit_card_name;
+                          
+                          // Parse benefits from reason, perks, or rewards_rate
+                          const parseBenefits = (): string[] => {
+                            const benefits: string[] = [];
                             
-                            {/* Description */}
-                            {rec.reason && (
-                              <p className="text-sm text-slate-600 mb-0 leading-relaxed">
-                                {rec.reason}
-                              </p>
-                            )}
+                            // Add rewards rate as a benefit if available
+                            if (rec.rewards_rate && !rec.rewards_rate.toLowerCase().includes('apr')) {
+                              benefits.push(rec.rewards_rate);
+                            }
                             
-                            <div className="space-y-2.5 text-sm mb-5 mt-1">
-                              {/* Annual Fee */}
-                              {rec.annual_fee && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-slate-700">Annual Fee</span>
-                                  <span className="text-slate-600 font-medium">{rec.annual_fee}</span>
+                            // Parse perks if available
+                            if (rec.perks) {
+                              const perkList = rec.perks
+                                .split(/[.,;]/)
+                                .map(p => p.trim())
+                                .filter(p => p.length > 10 && p.length < 100); // Reasonable length
+                              benefits.push(...perkList);
+                            }
+                            
+                            // Parse reason for key benefits
+                            if (rec.reason && benefits.length < 4) {
+                              const reasonBenefits = rec.reason
+                                .split(/[.,;]/)
+                                .map(r => r.trim())
+                                .filter(r => {
+                                  const lower = r.toLowerCase();
+                                  return r.length > 15 && 
+                                         r.length < 100 &&
+                                         !lower.includes('annual fee') &&
+                                         !lower.includes('credit score') &&
+                                         (lower.includes('points') || 
+                                          lower.includes('cash back') || 
+                                          lower.includes('rewards') ||
+                                          lower.includes('travel') ||
+                                          lower.includes('perk') ||
+                                          lower.includes('benefit'));
+                                });
+                              benefits.push(...reasonBenefits);
+                            }
+                            
+                            return benefits.slice(0, 4); // Limit to 4 benefits
+                          };
+                          
+                          const benefits = parseBenefits();
+                          
+                          return (
+                            <div
+                              key={recIndex}
+                              className="bg-gradient-to-br from-card to-blue-50 rounded-xl border border-border shadow-md hover:shadow-lg transition-all duration-300 p-6 flex flex-col group hover:-translate-y-1 space-y-4"
+                            >
+                              {/* Header Section */}
+                              <div className="flex items-start gap-3">
+                                {/* Card Icon */}
+                                <div className="w-16 h-10 rounded bg-gradient-to-br from-primary/10 to-primary/5 border border-border flex-shrink-0 flex items-center justify-center">
+                                  <CreditCard className="w-5 h-5 text-primary" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  {/* Card Name */}
+                                  <h3 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors leading-tight mb-1">
+                                    <a 
+                                      href={rec.apply_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="hover:underline cursor-pointer"
+                                    >
+                                      {cardName}
+                                    </a>
+                                  </h3>
+                                  {/* Issuer */}
+                                  <p className="text-sm text-muted-foreground">{issuer}</p>
+                                </div>
+                              </div>
+                              
+                              {/* Benefits Section */}
+                              {benefits.length > 0 && (
+                                <div className="space-y-2">
+                                  {benefits.map((benefit, idx) => (
+                                    <div key={idx} className="flex items-start gap-2">
+                                      <Check className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                                      <p className="text-sm text-foreground leading-relaxed">{benefit}</p>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                               
-                              {/* Credit Score */}
-                              {rec.credit_score_needed && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-slate-700">Credit Score</span>
-                                  <span className="text-slate-600 font-medium">{rec.credit_score_needed}</span>
+                              {/* Footer Section */}
+                              <div className="border-t border-border pt-4 space-y-3">
+                                {/* Badges */}
+                                <div className="flex flex-wrap gap-2">
+                                  {rec.annual_fee && (
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+                                      {rec.annual_fee}
+                                    </span>
+                                  )}
                                 </div>
-                              )}
-                              
-                              {/* Intro Offer */}
-                              {rec.intro_offer && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-slate-700">Intro Offer</span>
-                                  <span className="text-slate-600 font-medium">{rec.intro_offer}</span>
-                                </div>
-                              )}
-                              
-                              {/* Intro APR - check if rewards_rate contains APR info */}
-                              {rec.rewards_rate && (rec.rewards_rate.toLowerCase().includes('apr') || rec.rewards_rate.toLowerCase().includes('0%')) && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-slate-700">Intro APR</span>
-                                  <span className="text-slate-600 font-medium">{rec.rewards_rate}</span>
-                                </div>
-                              )}
-                              
-                              {/* Rewards Rate (if not APR) */}
-                              {rec.rewards_rate && !rec.rewards_rate.toLowerCase().includes('apr') && !rec.rewards_rate.toLowerCase().includes('0%') && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-slate-700">Rewards</span>
-                                  <span className="text-slate-600 font-medium">{rec.rewards_rate}</span>
-                                </div>
-                              )}
+                                
+                                {/* CTA Button */}
+                                <a
+                                  href={rec.apply_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-full flex items-center justify-center px-4 py-2.5 text-sm font-medium border border-border rounded-lg bg-transparent text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-300 group-hover:border-primary"
+                                >
+                                  Learn More
+                                  <ExternalLink className="w-4 h-4 ml-2" />
+                                </a>
+                              </div>
                             </div>
-                              
-                              {/* Apply Now Button */}
-                              <a
-                                href={rec.apply_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-auto w-full text-center px-5 py-3 h-12 lg:h-auto bg-gradient-to-r from-teal-600 to-cyan-600 text-white text-base lg:text-sm font-semibold rounded-xl hover:from-teal-700 hover:to-cyan-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-500/40 hover:shadow-xl hover:shadow-teal-500/50 group-hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                              >
-                                Apply Now
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
-                              </a>
-                            </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       {/* Cartoon below the cards - Desktop only */}
                       {currentCartoon && (

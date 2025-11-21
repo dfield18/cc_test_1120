@@ -105,7 +105,7 @@ Guidelines:
 - Remaining questions should be diverse and cover different topics
 - ALL questions must be what the USER would ask the chatbot
 - Start with question words (What, Which, Show me, I need, etc.)
-- Keep questions concise (under 15 words each)
+- Keep questions concise (10 words or less, maximum 58 characters)
 - Make them natural and conversational
 - Ensure maximum diversity - avoid questions that are just slight variations of each other`,
       },
@@ -157,9 +157,30 @@ Avoid similar or overlapping questions. These must be questions the user would t
     const parsed = JSON.parse(responseText);
     const suggestions = parsed.suggestions || [];
 
-    // Ensure we have 4 distinct suggestions
+    // Fallback questions (all 10 words or less and 58 characters or less)
+    const fallbackQuestions = [
+      'What cards offer the best cash back?',
+      'Show me cards with no annual fee',
+      'Which cards have travel benefits?',
+      'What are the best cards for everyday spending?',
+      'Show me cards with welcome bonuses',
+      'What cards offer the most points?',
+      'Which cards have no foreign fees?',
+      'What are the best student cards?'
+    ];
+
+    // Helper function to count words
+    const countWords = (text: string): number => {
+      return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+    };
+
+    // Filter suggestions to only include those with 10 words or less and 58 characters or less
     const validSuggestions = suggestions
-      .filter((s: any) => typeof s === 'string' && s.trim().length > 0)
+      .filter((s: any) => {
+        if (typeof s !== 'string' || s.trim().length === 0) return false;
+        const trimmed = s.trim();
+        return trimmed.length <= 58 && countWords(trimmed) <= 10;
+      })
       .slice(0, 4);
 
     // Remove duplicates and very similar suggestions
@@ -174,29 +195,44 @@ Avoid similar or overlapping questions. These must be questions the user would t
       }
     }
 
-    // If we don't have enough distinct suggestions, add fallback ones
-    if (distinctSuggestions.length < 4) {
-      const fallbacks = [
-        'What cards offer the best cash back rewards?',
-        'Show me cards with no annual fee',
-        'Which cards have the best travel benefits?',
-        'What are the best cards for everyday spending?',
-      ];
-      
-      for (const fallback of fallbacks) {
-        if (distinctSuggestions.length >= 4) break;
-        const isDuplicate = distinctSuggestions.some(existing => {
-          const similarity = calculateSimilarity(existing.toLowerCase(), fallback.toLowerCase());
-          return similarity > 0.7;
-        });
-        if (!isDuplicate) {
-          distinctSuggestions.push(fallback);
+    // Replace any suggestions that are still too long with fallbacks
+    const processedSuggestions: string[] = [];
+    let fallbackIndex = 0;
+    
+    for (const suggestion of distinctSuggestions) {
+      const trimmed = suggestion.trim();
+      const wordCount = countWords(trimmed);
+      if (trimmed.length <= 58 && wordCount <= 10) {
+        processedSuggestions.push(suggestion);
+      } else {
+        // Replace with a fallback question
+        while (fallbackIndex < fallbackQuestions.length) {
+          const fallback = fallbackQuestions[fallbackIndex];
+          if (!processedSuggestions.includes(fallback)) {
+            processedSuggestions.push(fallback);
+            fallbackIndex++;
+            break;
+          }
+          fallbackIndex++;
         }
       }
     }
 
-    // Return exactly 4 suggestions
-    return NextResponse.json({ suggestions: distinctSuggestions.slice(0, 4) });
+    // If we don't have enough distinct suggestions, add fallback ones
+    while (processedSuggestions.length < 4 && fallbackIndex < fallbackQuestions.length) {
+      const fallback = fallbackQuestions[fallbackIndex];
+      const isDuplicate = processedSuggestions.some(existing => {
+        const similarity = calculateSimilarity(existing.toLowerCase(), fallback.toLowerCase());
+        return similarity > 0.7;
+      });
+      if (!isDuplicate) {
+        processedSuggestions.push(fallback);
+      }
+      fallbackIndex++;
+    }
+
+    // Return exactly 4 suggestions (all 10 words or less and 58 characters or less)
+    return NextResponse.json({ suggestions: processedSuggestions.slice(0, 4) });
   } catch (error) {
     console.error('Error generating suggestions:', error);
     return NextResponse.json(
